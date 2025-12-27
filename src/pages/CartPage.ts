@@ -3,63 +3,59 @@ import { BasePage } from './BasePage';
 
 export class CartPage extends BasePage {
   readonly cartItems: Locator;
-  readonly cartItemNames: Locator;
   readonly removeButtons: Locator;
   readonly emptyState: Locator;
 
   constructor(page: Page) {
     super(page);
 
-    // Try multiple selectors to stay compatible with site versions.
+    // جميع أشكال عناصر السلة المحتملة
     this.cartItems = page.locator(
-      '[data-test="cart-item"], [data-test^="cart-item"], .cart-item, tr:has([data-test="product-name"])'
+      'tr:has([data-test="product-name"]), [data-test="cart-item"], .cart-item'
     );
-    this.cartItemNames = this.cartItems.locator('[data-test="product-name"], .product-name, a');
-    this.removeButtons = this.cartItems.locator(
-      '[data-test="remove-from-cart"], [data-test="remove"], button:has-text("Remove"), button:has-text("Delete")'
+
+    // لا تربط زر الإزالة بالعنصر (DOM غير ثابت)
+    this.removeButtons = page.locator(
+      '[data-test="remove-from-cart"], button:has-text("Remove"), button:has-text("Delete")'
     );
-    this.emptyState = page.locator('text=/cart is empty/i, text=/your cart is empty/i');
+
+    this.emptyState = page.locator(
+      'text=/your cart is empty/i, text=/cart is empty/i'
+    );
   }
 
   async open() {
-    await this.goto('/cart');
-    await expect(this.page).toHaveURL(/\/cart/);
-  }
-
-  async getItemNames(): Promise<string[]> {
-    const count = await this.cartItemNames.count();
-    const names: string[] = [];
-    for (let i = 0; i < count; i++) {
-      const text = (await this.cartItemNames.nth(i).textContent())?.trim();
-      if (text) names.push(text);
-    }
-    return names;
+    await this.goto('/#/cart');
+    await this.page.waitForLoadState('networkidle');
+    await expect(this.page).toHaveURL(/cart/);
   }
 
   async removeFirstItem() {
-    if ((await this.removeButtons.count()) === 0) {
-      throw new Error('No remove buttons found in cart.');
-    }
+    const before = await this.cartItems.count();
+    expect(before).toBeGreaterThan(0);
+
     await this.removeButtons.first().click();
+
+    // انتظر حتى يتغير العدد فعليًا (أفضل من visibility)
+    await expect.poll(
+      async () => await this.cartItems.count(),
+      { timeout: 15000 }
+    ).toBeLessThan(before);
   }
 
-  async clearCart(maxRemovals = 10) {
-    for (let i = 0; i < maxRemovals; i++) {
-      const items = await this.cartItems.count();
-      if (items === 0) break;
+  async clearCart(max = 10) {
+    for (let i = 0; i < max; i++) {
+      const count = await this.cartItems.count();
+      if (count === 0) break;
       await this.removeFirstItem();
-      // Small wait for UI to update.
-      await this.page.waitForTimeout(300);
     }
   }
 
   async expectEmpty() {
-    // Prefer count, fallback to empty message.
-    const itemCount = await this.cartItems.count();
-    if (itemCount === 0) {
-      await expect(this.cartItems).toHaveCount(0);
-      return;
-    }
+    await expect.poll(
+      async () => await this.cartItems.count()
+    ).toBe(0);
+
     await expect(this.emptyState).toBeVisible();
   }
 }

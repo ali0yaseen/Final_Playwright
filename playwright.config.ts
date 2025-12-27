@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
+import 'dotenv/config';
 
 // Load .env (not committed). Use .env.example as template.
 dotenv.config();
